@@ -17,7 +17,7 @@ import Test.FRP.General
 --------------------------------------------------------------------}
 
 newtype Path a = Path { unPath :: [a] }
-    deriving (Foldable, Functor)
+    deriving (Show, Foldable, Functor)
 
 {--------------------------------------------------------------------
     Definitions
@@ -117,7 +117,7 @@ p `until` q = do
             return pWeakUntilQ
         else do
             warn "False: Stop condition in Until operator is never satisfied"
-            return False
+            return eventuallyQ
 
 release :: (IsProperty propa Path a, IsProperty propb Path a) => propa -> propb -> PathProperty a Bool
 p `release` q = do
@@ -135,3 +135,19 @@ p `release` q = do
                     if canCont
                         then nextFrame (p `release` q)
                         else return True
+
+{--------------------------------------------------------------------
+    Now vs. future properties
+--------------------------------------------------------------------}
+
+increasing :: Ord a => PathProperty a Bool
+increasing = do
+    valA <- getValue
+    valB <- next
+    return (maybe True (>valA) valB)
+
+decreasing :: Ord a => PathProperty a Bool
+decreasing = do
+    valA <- getValue
+    valB <- next
+    return (maybe True (<valA) valB)

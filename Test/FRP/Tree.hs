@@ -18,7 +18,11 @@ import Test.FRP.Path
 --------------------------------------------------------------------}
 
 newtype ProgTree a = ProgTree { unProgTree :: Tree a }
-    deriving (Foldable, Functor)
+    deriving (Show, Foldable, Functor)
+
+instance Applicative ProgTree where
+    pure x = ProgTree (pure x)
+    ProgTree a <*> ProgTree b = ProgTree (a <*> b)
 
 {--------------------------------------------------------------------
     Path selector

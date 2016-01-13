@@ -46,11 +46,11 @@ printResult result =
         Result { resultValue = Left err, resultWarnings = warns } -> do
             putStrLn $ "Test failed due to fatal error: " ++ err
             putStrLn ""
-            mapM_ putStrLn warns
+            mapM_ putStrLn (reverse warns)
         Result { resultValue = Right False, resultWarnings = warns } -> do
             putStrLn "Test failed"
             putStrLn ""
-            mapM_ putStrLn warns
+            mapM_ putStrLn (reverse warns)
         Result { resultValue = Right True } ->
             putStrLn "Test passed"
 
@@ -58,7 +58,7 @@ printResult result =
     Property
 --------------------------------------------------------------------}
 
-newtype Property container a b = Prop (container (Value a) -> Result b)
+newtype Property container a b = Prop { unProp :: container (Value a) -> Result b }
 
 instance Functor (Property container a) where
     fmap f (Prop prop) = Prop $ \input -> fmap f (prop input)
@@ -72,9 +72,7 @@ instance Monad (Property container a) where
     Prop prop >>= f = Prop $ \input ->
         case prop input of
             Result { resultValue = Left s, resultWarnings = warns } -> Result { resultValue = Left s, resultWarnings = warns }
-            results@Result { resultValue = Right x } ->
-                case f x of
-                    Prop fProp -> results `appendMessages` fProp input
+            results@Result { resultValue = Right x } -> results `appendMessages` unProp (f x) input
 
 instance Messageable (Property container a) where
     warn s = returnResult Result { resultValue = Right (), resultWarnings = [s] }
@@ -104,13 +102,13 @@ runSubProperty input prop = returnResult $ runProperty input prop
     General properties
 --------------------------------------------------------------------}
 
-class IsProperty prop cont a where
-    toProperty :: prop -> Property cont a Bool
+class IsProperty prop container a where
+    toProperty :: prop -> Property container a Bool
 
-instance a ~ b => IsProperty Bool cont b where
+instance a ~ b => IsProperty Bool container b where
     toProperty = pure
 
-instance (Foldable cont, a ~ b) => IsProperty (a -> Bool) cont b where
+instance (Foldable container, a ~ b) => IsProperty (a -> Bool) container b where
     toProperty prop = do
         input <- getPropInput
         let xs = toList input
@@ -118,37 +116,39 @@ instance (Foldable cont, a ~ b) => IsProperty (a -> Bool) cont b where
             [] -> fatal "Not enough input to satisfy property"
             (Value (x, _) : _) -> pure (prop x)
 
-instance (conta ~ contb, a ~ b) => IsProperty (Property conta a Bool) contb b where
+instance (containera ~ containerb, a ~ b) => IsProperty (Property containera a Bool) containerb b where
     toProperty = id
 
 {--------------------------------------------------------------------
     General property operations
 --------------------------------------------------------------------}
 
-(\/) :: (IsProperty propa cont a, IsProperty propb cont a) => propa -> propb -> Property cont a Bool
+(\/) :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
 a \/ b = do
     aVal <- toProperty a
     bVal <- toProperty b
     return (aVal || bVal)
 
-(/\) :: (IsProperty propa cont a, IsProperty propb cont a) => propa -> propb -> Property cont a Bool
+(/\) :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
 a /\ b = do
     aVal <- toProperty a
     bVal <- toProperty b
     return (aVal && bVal)
 
 {--------------------------------------------------------------------
-    Timepoints
+    Time
 --------------------------------------------------------------------}
 
 type TimePoint = Float
+
+type TimeSpan = Float
 
 {--------------------------------------------------------------------
     Values
 --------------------------------------------------------------------}
 
 newtype Value a = Value (a, TimePoint)
-    deriving (Foldable, Functor)
+    deriving (Show, Foldable, Functor)
 
 instance Eq a => Eq (Value a) where
     Value (x, _) == Value (y, _) = x == y
