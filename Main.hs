@@ -7,18 +7,17 @@ import Test.FRP.Tree
 import Test.FRP.TreeGen
 
 -- TODO: better messages on TreeProperty predicates
--- TODO: nice input generation system - branches needed then done!
 -- TODO: TestableArrow instance for Yampa
 -- TODO: create some examples
 
 main :: IO ()
-main = runTest testValueGen (const 5) testTreeProp
+main = runTest testValueGen id testTreeProp
 
-testValueGen :: Gen g Bool ()
-testValueGen = putValues [True, False, True]
+testValueGen :: Gen g Int ()
+testValueGen = putValues [1,2,3,4,5]
 
 testTreeProp :: TreeProperty Int Bool
 testTreeProp = inevitably allPaths testPathProp
 
 testPathProp :: PathProperty Int Bool
-testPathProp = always (==5)
+testPathProp = always (==5) \/ eventually (>4)

@@ -4,6 +4,8 @@ module Test.FRP.General where
 
 import Data.Foldable
 
+import Control.Applicative
+
 {--------------------------------------------------------------------
     Messages
 --------------------------------------------------------------------}
@@ -30,12 +32,15 @@ instance Functor Result where
 
 instance Applicative Result where
     pure x = Result { resultValue = Right x, resultWarnings = [] }
-    Result { resultValue = f, resultWarnings = warnsa } <*> Result { resultValue = x, resultWarnings = warnsb } =
-        Result { resultValue = f <*> x, resultWarnings = warnsa ++ warnsb }
+    Result { resultValue = f, resultWarnings = warnsA } <*> Result { resultValue = x, resultWarnings = warnsB } =
+        Result { resultValue = f <*> x, resultWarnings = warnsB ++ warnsA }
 
 instance Monad Result where
     return = pure
-    result >>= f = error "Monad::Result::(>>=) not implemented"
+    (Result { resultValue = Left s, resultWarnings = warns }) >>= _ = Result { resultValue = Left s, resultWarnings = warns }
+    (Result { resultValue = Right x, resultWarnings = warnsA }) >>= f =
+        let Result { resultValue = result, resultWarnings = warnsB } = f x
+        in Result { resultValue = result, resultWarnings = warnsB ++ warnsA }
 
 appendMessages :: Result a -> Result b -> Result b
 a `appendMessages` b = b { resultWarnings = resultWarnings b ++ resultWarnings a }
@@ -46,11 +51,11 @@ printResult result =
         Result { resultValue = Left err, resultWarnings = warns } -> do
             putStrLn $ "Test failed due to fatal error: " ++ err
             putStrLn ""
-            mapM_ putStrLn (reverse warns)
+            mapM_ putStrLn warns
         Result { resultValue = Right False, resultWarnings = warns } -> do
             putStrLn "Test failed"
             putStrLn ""
-            mapM_ putStrLn (reverse warns)
+            mapM_ putStrLn warns
         Result { resultValue = Right True } ->
             putStrLn "Test passed"
 
@@ -65,7 +70,7 @@ instance Functor (Property container a) where
 
 instance Applicative (Property container a) where
     pure x = Prop $ \_ -> pure x
-    fs <*> xs = error "Applicative::Property::(<*>) not implemented"
+    (Prop fs) <*> (Prop x) = Prop $ \input -> fs input <*> x input
 
 instance Monad (Property container a) where
     return = pure
@@ -124,16 +129,13 @@ instance (containera ~ containerb, a ~ b) => IsProperty (Property containera a B
 --------------------------------------------------------------------}
 
 (\/) :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
-a \/ b = do
-    aVal <- toProperty a
-    bVal <- toProperty b
-    return (aVal || bVal)
+a \/ b = liftA2 (||) (toProperty a) (toProperty b)
 
 (/\) :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
-a /\ b = do
-    aVal <- toProperty a
-    bVal <- toProperty b
-    return (aVal && bVal)
+a /\ b = liftA2 (&&) (toProperty a) (toProperty b)
+
+pNot :: IsProperty propa container a => propa -> Property container a Bool
+pNot prop = fmap not (toProperty prop)
 
 {--------------------------------------------------------------------
     Time

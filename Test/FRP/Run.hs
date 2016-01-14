@@ -15,7 +15,7 @@ runTest :: TestableArrow arr => Gen StdGen a () -> arr a b -> TreeProperty b Boo
 runTest gen framework prop = do
     tree <- runDefaultGen_ gen
     case tree of
-        Nothing -> error "Test input generator did not produce any output tree"
+        Nothing -> error "runTest: Value generator did not produce anything"
         Just inputTree -> do
             testInput <- createOutput framework inputTree
             printResult (runProperty testInput prop)

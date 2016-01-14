@@ -75,7 +75,7 @@ nextFrame :: Property Path a b -> PathProperty a b
 nextFrame prop = do
     Path xs <- getPropInput
     case xs of
-        [] -> fatal "Cannot perform operation in next frame as operation was performed at the end of input"
+        [] -> fatal "Cannot perform operation in next frame as there is no frame after the current one"
         (_:ys) -> runSubProperty (Path ys) prop
 
 {--------------------------------------------------------------------
@@ -97,7 +97,7 @@ always prop = do
 
 eventually :: IsProperty prop Path a => prop -> PathProperty a Bool
 eventually prop = do
-    result <- fmap not (always (fmap not (toProperty prop)))
+    result <- pNot (always (pNot prop))
     unless result (warn "False: Condition in Eventually operator is never satisfied")
     return result
 

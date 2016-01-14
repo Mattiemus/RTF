@@ -1,5 +1,3 @@
-{-# LANGUAGE ExistentialQuantification #-}
-
 module Test.FRP.TreeGen where
 
 import Data.Tree
@@ -15,7 +13,7 @@ import Test.FRP.Path
 --------------------------------------------------------------------}
 
 data GenState g
-    = RandomGen g => GenState {
+    = GenState {
          genRandom :: g
         ,genClock :: TimePoint
         ,genClockDelta :: TimeSpan
@@ -37,14 +35,17 @@ instance Functor (Gen g a) where
 
 instance Applicative (Gen g a) where
     pure x = Gen $ \state -> (x, id, state)
-    _ <*> _ = error "Applicative::Gen::(<*>) not implemented"
+    (Gen fs) <*> (Gen xs) = Gen $ \state ->
+        let (f, fTree, fState) = fs state
+            (x, xTree, xState) = xs fState
+        in (f x, fTree . xTree, xState)
 
 instance Monad (Gen g a) where
     return = pure
     Gen g >>= f = Gen $ \state ->
-        let (x, treeA, nextState) = g state
-            (y, treeB, lastState) = unGen (f x) nextState
-        in (y, treeA . treeB, lastState)
+        let (x, treeA, gState) = g state
+            (y, treeB, fState) = unGen (f x) gState
+        in (y, treeA . treeB, fState)
 
 {--------------------------------------------------------------------
     Execution
@@ -63,6 +64,11 @@ runDefaultGen_ :: Gen StdGen a b -> IO (Maybe (ProgTree (Value a)))
 runDefaultGen_ gen = do
     (_, result) <- runDefaultGen gen
     return result
+
+printGeneratedTree :: Show a => Gen StdGen a b -> IO ()
+printGeneratedTree gen = do
+    Just (ProgTree tree) <- runDefaultGen_ gen
+    putStrLn (drawTree (fmap show tree))
 
 {--------------------------------------------------------------------
     Primitive operations
@@ -124,3 +130,17 @@ putRandRValue min max = do
     x <- withState (\s -> let (val, nextG) = randomR (min, max) (genRandom s)
                           in (val, s { genRandom = nextG }))
     putValue x
+
+{--------------------------------------------------------------------
+    Branching generators
+--------------------------------------------------------------------}
+
+branch :: Gen g a b -> Gen g a b
+branch gen = Gen $ \state ->
+    let (x, genTree, _) = unGen (stepClock >> gen) state
+    in (x, addBranch (genTree Nothing), state)
+    where
+        addBranch (Just (ProgTree branchTree)) (Just (ProgTree (Node x nextTree))) = Just (ProgTree (Node x (branchTree : nextTree)))
+        addBranch (Just branchTree) Nothing = Just branchTree
+        addBranch Nothing (Just nextTree) = Just nextTree
+        addBranch Nothing Nothing = Nothing
