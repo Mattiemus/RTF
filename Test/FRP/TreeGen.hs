@@ -26,7 +26,7 @@ defaultGenState gen = GenState { genRandom = gen, genClock = 0.0, genClockDelta 
     Tree generator
 --------------------------------------------------------------------}
 
-data Gen g a b = Gen { unGen :: GenState g -> (b, Maybe (ProgTree (Value a)) -> Maybe (ProgTree (Value a)), GenState g) }
+data Gen g a b = Gen { unGen :: GenState g -> (b, [ProgTree (Value a)] -> [ProgTree (Value a)], GenState g) }
 
 instance Functor (Gen g a) where
     fmap f (Gen g) = Gen $ \state ->
@@ -51,24 +51,24 @@ instance Monad (Gen g a) where
     Execution
 --------------------------------------------------------------------}
 
-runDefaultGen :: Gen StdGen a b -> IO (b, Maybe (ProgTree (Value a)))
+runDefaultGen :: Gen StdGen a b -> IO (b, [ProgTree (Value a)])
 runDefaultGen (Gen g) = do
     -- Create the state
     randGen <- newStdGen
     let state = defaultGenState randGen
         (x, tree, _) = g state
-        resultTree = tree Nothing
+        resultTree = tree []
     return (x, resultTree)
 
-runDefaultGen_ :: Gen StdGen a b -> IO (Maybe (ProgTree (Value a)))
+runDefaultGen_ :: Gen StdGen a b -> IO [ProgTree (Value a)]
 runDefaultGen_ gen = do
     (_, result) <- runDefaultGen gen
     return result
 
 printGeneratedTree :: Show a => Gen StdGen a b -> IO ()
 printGeneratedTree gen = do
-    Just (ProgTree tree) <- runDefaultGen_ gen
-    putStrLn (drawTree (fmap show tree))
+    trees <- runDefaultGen_ gen
+    mapM_ putStrLn (fmap (drawTree . fmap show . unProgTree) trees)
 
 {--------------------------------------------------------------------
     Primitive operations
@@ -107,8 +107,8 @@ setClockDelta span = state (\s -> s { genClockDelta = span })
 putVal :: Value a -> Gen g a ()
 putVal x = Gen $ \state -> ((), addValue, state)
     where
-        addValue Nothing = Just (ProgTree (pure x))
-        addValue (Just next) = Just (ProgTree (Node x [unProgTree next]))
+        addValue [] = [ProgTree (pure x)]
+        addValue nexts = [ProgTree (Node x (fmap unProgTree nexts))]
 
 putValue :: a -> Gen g a ()
 putValue x = do
@@ -137,10 +137,10 @@ putRandRValue min max = do
 
 branch :: Gen g a b -> Gen g a b
 branch gen = Gen $ \state ->
-    let (x, genTree, _) = unGen (stepClock >> gen) state
-    in (x, addBranch (genTree Nothing), state)
-    where
-        addBranch (Just (ProgTree branchTree)) (Just (ProgTree (Node x nextTree))) = Just (ProgTree (Node x (branchTree : nextTree)))
-        addBranch (Just branchTree) Nothing = Just branchTree
-        addBranch Nothing (Just nextTree) = Just nextTree
-        addBranch Nothing Nothing = Nothing
+    let (x, genTree, GenState { genRandom = rand }) = unGen gen state
+    in (x, \nextTrees -> genTree [] ++ nextTrees, state { genRandom = rand })
+
+branchForgetRand :: Gen g a b -> Gen g a b
+branchForgetRand gen = Gen $ \state ->
+    let (x, genTree, _) = unGen gen state
+    in (x, \nextTrees -> genTree [] ++ nextTrees, state)

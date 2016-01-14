@@ -141,6 +141,16 @@ a \/ b = liftA2 (||) (toProperty a) (toProperty b)
 (/\) :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
 a /\ b = liftA2 (&&) (toProperty a) (toProperty b)
 
+implies :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
+a `implies` b = do
+    aVal <- toProperty a
+    if aVal
+        then toProperty b
+        else return True
+
+(-->) :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
+(-->) = implies
+
 pNot :: IsProperty propa container a => propa -> Property container a Bool
 pNot prop = fmap not (toProperty prop)
 

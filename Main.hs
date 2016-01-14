@@ -14,10 +14,12 @@ main :: IO ()
 main = runTest testValueGen id testTreeProp
 
 testValueGen :: Gen g Int ()
-testValueGen = putValues [1,2,3,4,5,6]
+testValueGen = do
+    branch (putValues [1..10])
+    branch (putValues [10,9..0])
 
 testTreeProp :: TreeProperty Int Bool
 testTreeProp = inevitably allPaths testPathProp
 
 testPathProp :: PathProperty Int Bool
-testPathProp = increasing `until` (>6)
+testPathProp = always increasing `implies` (==1)

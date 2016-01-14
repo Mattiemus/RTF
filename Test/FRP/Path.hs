@@ -73,7 +73,14 @@ nextFrame prop = do
     Path xs <- getPropInput
     case xs of
         [] -> fatal "Cannot perform operation in next frame as there is no frame after the current one"
-        (_:ys) -> runSubProperty (Path ys) (toProperty prop) `ifFalseWarn` "False: Condition did not hold in the next frame"
+        (_:ys) -> runSubProperty (Path ys) (toProperty prop) `ifFalseWarn` "Condition did not hold in the next frame"
+
+tryNextFrame :: (IsProperty failProp Path a, IsProperty successProp Path a) => failProp -> successProp -> PathProperty a Bool
+tryNextFrame failProp successProp = do
+    canCont <- hasNext
+    if canCont
+        then nextFrame successProp
+        else toProperty failProp
 
 {--------------------------------------------------------------------
     Time constraining properties
@@ -106,34 +113,30 @@ next = do
         _ -> pure Nothing
 
 always :: IsProperty prop Path a => prop -> PathProperty a Bool
-always prop = (False `release` prop) `ifFalseWarn` "False: Condition in Always operator is not globablly satisfiable"
+always prop = (False `release` prop) `ifFalseWarn` "Condition in Always operator is not globablly satisfiable"
 
 eventually :: IsProperty prop Path a => prop -> PathProperty a Bool
-eventually prop = pNot (always (pNot prop)) `ifFalseWarn` "False: Condition in Eventually operator is never satisfied"
+eventually prop = pNot (always (pNot prop)) `ifFalseWarn` "Condition in Eventually operator is never satisfied"
 
 weakUntil :: (IsProperty propa Path a, IsProperty propb Path a) => propa -> propb -> PathProperty a Bool
-p `weakUntil` q = (q `release` (q \/ p)) `ifFalseWarn` "False: Condition in WeakUntil operator returned False prior to the stop condition being satisfied"
+p `weakUntil` q = (q `release` (q \/ p)) `ifFalseWarn` "Condition in WeakUntil operator returned False prior to the stop condition being satisfied"
 
 until :: (IsProperty propa Path a, IsProperty propb Path a) => propa -> propb -> PathProperty a Bool
 p `until` q = do
-    eventuallyQ <- eventually q `ifFalseWarn` "False: Stop condition in Until operator is never satisfied"
+    eventuallyQ <- eventually q `ifFalseWarn` "Stop condition in Until operator is never satisfied"
     if eventuallyQ
-        then (p `weakUntil` q) `ifFalseWarn` "False: Condition in Until operator returned False prior to the stop condition being satisfied"
+        then (p `weakUntil` q) `ifFalseWarn` "Condition in Until operator returned False prior to the stop condition being satisfied"
         else return False
 
 release :: (IsProperty propa Path a, IsProperty propb Path a) => propa -> propb -> PathProperty a Bool
 p `release` q = do
-    qNow <- toProperty q `ifFalseWarn` "False: Condition in Release operator returned False prior to the release condition being satisfied"
+    qNow <- toProperty q `ifFalseWarn` "Condition in Release operator returned False prior to the release condition being satisfied"
     if qNow
         then do
             pNow <- toProperty p
             if pNow
                 then return True
-                else do
-                    canCont <- hasNext
-                    if canCont
-                        then nextFrame (p `release` q)
-                        else return True
+                else tryNextFrame True (p `release` q)
         else return False
 
 {--------------------------------------------------------------------

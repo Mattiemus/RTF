@@ -5,6 +5,7 @@ module Test.FRP.Tree where
 import Prelude hiding ((.), id, until)
 
 import Data.Tree
+import Data.Either
 
 import Control.Arrow
 import Control.Category
@@ -30,6 +31,9 @@ allPaths :: PathSelector a
 allPaths (ProgTree (Node x [])) = [Path [x]]
 allPaths (ProgTree (Node x ys)) = fmap (Path . (x :)) (concatMap (fmap unPath . allPaths) (fmap ProgTree ys))
 
+pathsWithProperty :: PathProperty a Bool -> PathSelector a
+pathsWithProperty prop tree = filter (\path -> isLeft (resultValue (runProperty path prop))) (allPaths tree)
+
 {---------------------------w-----------------------------------------
     Definitions
 --------------------------------------------------------------------}
@@ -37,26 +41,39 @@ allPaths (ProgTree (Node x ys)) = fmap (Path . (x :)) (concatMap (fmap unPath . 
 type TreeProperty a b = Property ProgTree a b
 
 {--------------------------------------------------------------------
-    Helpers
---------------------------------------------------------------------}
-
-pathResults :: PathProperty a b -> PathSelector a -> TreeProperty a [Result b]
-pathResults prop selector = do
-    tree <- getPropInput
-    let paths = selector tree
-        results = fmap (`runProperty` prop) paths
-    return results
-
-{--------------------------------------------------------------------
     Predefined properties
 --------------------------------------------------------------------}
 
 inevitably :: PathSelector a -> PathProperty a Bool -> TreeProperty a Bool
 inevitably selector prop = do
-    results <- pathResults prop selector
-    returnResult $ fmap and (sequence results)
+    paths <- fmap selector getPropInput
+    if null paths
+        then fatal "Path selector did not select any paths through the program tree"
+        else runPaths paths prop
+    where
+        runPaths :: [Path (Value a)] -> PathProperty a Bool -> TreeProperty a Bool
+        runPaths [] pathProp = return True
+        runPaths (path:paths) pathProp = do
+            pathResult <- returnResult (runProperty path pathProp)
+            if pathResult
+                then runPaths paths pathProp
+                else do
+                    warn "Path property was not satisfied along one of the selected paths"
+                    return False
 
 possibly :: PathSelector a -> PathProperty a Bool -> TreeProperty a Bool
 possibly selector prop = do
-    results <- pathResults prop selector
-    returnResult $ fmap or (sequence results)
+    paths <- fmap selector getPropInput
+    if null paths
+        then fatal "Path selector did not select any paths through the program tree"
+        else runPaths paths prop
+    where
+        runPaths :: [Path (Value a)] -> PathProperty a Bool -> TreeProperty a Bool
+        runPaths [] pathProp = do
+            warn "Path property was not satisfied along any of the selected paths"
+            return False
+        runPaths (path:paths) pathProp = do
+            pathResult <- returnResult (runProperty path pathProp)
+            if pathResult
+                then return True
+                else runPaths paths pathProp

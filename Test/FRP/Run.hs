@@ -13,12 +13,20 @@ import Test.FRP.TreeGen
 
 runTest :: TestableArrow arr => Gen StdGen a () -> arr a b -> TreeProperty b Bool -> IO ()
 runTest gen framework prop = do
-    tree <- runDefaultGen_ gen
-    case tree of
-        Nothing -> error "runTest: Value generator did not produce anything"
-        Just inputTree -> do
-            testInput <- createOutput framework inputTree
-            printResult (runProperty testInput prop)
+    trees <- runDefaultGen_ gen
+    case trees of
+        [] -> error "runTest: Value generator did not produce anything"
+        inputTrees -> runTrees trees framework prop
+    where
+        runTrees :: TestableArrow arr => [ProgTree (Value a)] -> arr a b -> TreeProperty b Bool -> IO ()
+        runTrees [] _ _ = putStrLn "All tests completed successfully"
+        runTrees (tree:trees) framework prop = do
+            testInput <- createOutput framework tree
+            let testResult = runProperty testInput prop
+            printResult testResult
+            case resultValue testResult of
+                Right True -> runTrees trees framework prop
+                _ -> putStrLn "Test failed. Stopping."
 
 {--------------------------------------------------------------------
     Testable arrow class
