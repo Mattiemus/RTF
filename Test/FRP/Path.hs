@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, ExistentialQuantification, DeriveFoldable, DeriveFunctor #-}
+{-# LANGUAGE GADTs, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, ExistentialQuantification, GeneralizedNewtypeDeriving #-}
 
 module Test.FRP.Path where
 
@@ -17,7 +17,7 @@ import Test.FRP.General
 --------------------------------------------------------------------}
 
 newtype Path a = Path { unPath :: [a] }
-    deriving (Show, Foldable, Functor)
+    deriving (Show, Foldable, Functor, Applicative, Monad, Alternative, MonadPlus)
 
 {--------------------------------------------------------------------
     Definitions
@@ -47,36 +47,52 @@ hasNext = do
     Time jumping properties
 --------------------------------------------------------------------}
 
-between :: IsProperty prop Path a => TimePoint -> TimePoint -> prop -> PathProperty a Bool
-between tpstart tpend prop = do
-    Path xs <- getPropInput
-    let filtered = filter (\(Value (_, t)) -> t > tpstart && t < tpend) xs
+betweenTimes :: IsProperty prop Path a => TimePoint -> TimePoint -> prop -> PathProperty a Bool
+betweenTimes tpstart tpend prop = do
+    Path filtered <- getFilteredInput (\(Value (_, t)) -> t > tpstart && t < tpend)
     if null filtered
-        then fatal "Operator `between` could not find any values between the given time points"
-        else runSubProperty (Path filtered) (toProperty prop)
+        then fatal "Operator `betweenTimes` could not find any values between the given time points"
+        else runSubProperty (Path filtered) (toProperty prop) `ifFalseWarn` "False: Condition did not hold between the specified times"
 
-before :: IsProperty prop Path a => TimePoint -> prop -> PathProperty a Bool
-before tp prop = do
-    Path xs <- getPropInput
-    let filtered = filter (\(Value (_, t)) -> t < tp) xs
+beforeTime :: IsProperty prop Path a => TimePoint -> prop -> PathProperty a Bool
+beforeTime tp prop = do
+    Path filtered <- getFilteredInput (\(Value (_, t)) -> t < tp)
     if null filtered
-        then fatal "Operator `before` could not find any values before the given time point"
-        else runSubProperty (Path filtered) (toProperty prop)
+        then fatal "Operator `beforeTime` could not find any values before the given time point"
+        else runSubProperty (Path filtered) (toProperty prop) `ifFalseWarn` "False: Condition did not hold before the specified time"
 
-after :: IsProperty prop Path a => TimePoint -> prop -> PathProperty a Bool
-after tp prop = do
-    Path xs <- getPropInput
-    let filtered = filter (\(Value (_, t)) -> t > tp) xs
+afterTime :: IsProperty prop Path a => TimePoint -> prop -> PathProperty a Bool
+afterTime tp prop = do
+    Path filtered <- getFilteredInput (\(Value (_, t)) -> t > tp)
     if null filtered
-        then fatal "Operator `after` could not find any values after the given time point"
-        else runSubProperty (Path filtered) (toProperty prop)
+        then fatal "Operator `afterTime` could not find any values after the given time point"
+        else runSubProperty (Path filtered) (toProperty prop) `ifFalseWarn` "False: Condition did not hold after the specified time"
 
-nextFrame :: Property Path a b -> PathProperty a b
+nextFrame :: IsProperty prop Path a => prop -> PathProperty a Bool
 nextFrame prop = do
     Path xs <- getPropInput
     case xs of
         [] -> fatal "Cannot perform operation in next frame as there is no frame after the current one"
-        (_:ys) -> runSubProperty (Path ys) prop
+        (_:ys) -> runSubProperty (Path ys) (toProperty prop) `ifFalseWarn` "False: Condition did not hold in the next frame"
+
+{--------------------------------------------------------------------
+    Time constraining properties
+--------------------------------------------------------------------}
+
+between :: IsProperty prop Path a => TimeSpan -> TimeSpan -> prop -> PathProperty a Bool
+between tsStart tsEnd prop = do
+    timeNow <- getTime
+    betweenTimes (tsStart + timeNow) (tsEnd + timeNow) prop
+
+before :: IsProperty prop Path a => TimeSpan -> prop -> PathProperty a Bool
+before ts prop = do
+    timeNow <- getTime
+    beforeTime (ts + timeNow) prop
+
+after :: IsProperty prop Path a => TimeSpan -> prop -> PathProperty a Bool
+after ts prop = do
+    timeNow <- getTime
+    afterTime (ts + timeNow) prop
 
 {--------------------------------------------------------------------
     Temporal properties
@@ -90,43 +106,26 @@ next = do
         _ -> pure Nothing
 
 always :: IsProperty prop Path a => prop -> PathProperty a Bool
-always prop = do
-    result <- False `release` prop
-    unless result (warn "False: Condition in Always operator is not globablly satisfiable")
-    return result
+always prop = (False `release` prop) `ifFalseWarn` "False: Condition in Always operator is not globablly satisfiable"
 
 eventually :: IsProperty prop Path a => prop -> PathProperty a Bool
-eventually prop = do
-    result <- pNot (always (pNot prop))
-    unless result (warn "False: Condition in Eventually operator is never satisfied")
-    return result
+eventually prop = pNot (always (pNot prop)) `ifFalseWarn` "False: Condition in Eventually operator is never satisfied"
 
 weakUntil :: (IsProperty propa Path a, IsProperty propb Path a) => propa -> propb -> PathProperty a Bool
-p `weakUntil` q = do
-    result <- q `release` (q \/ p)
-    unless result (warn "False: Condition in WeakUntil operator returned False prior to the stop condition being satisfied")
-    return result
+p `weakUntil` q = (q `release` (q \/ p)) `ifFalseWarn` "False: Condition in WeakUntil operator returned False prior to the stop condition being satisfied"
 
 until :: (IsProperty propa Path a, IsProperty propb Path a) => propa -> propb -> PathProperty a Bool
 p `until` q = do
-    eventuallyQ <- eventually q
+    eventuallyQ <- eventually q `ifFalseWarn` "False: Stop condition in Until operator is never satisfied"
     if eventuallyQ
-        then do
-            pWeakUntilQ <- p `weakUntil` q
-            unless pWeakUntilQ (warn "False: Condition in Until operator returned False prior to the stop condition being satisfied")
-            return pWeakUntilQ
-        else do
-            warn "False: Stop condition in Until operator is never satisfied"
-            return eventuallyQ
+        then (p `weakUntil` q) `ifFalseWarn` "False: Condition in Until operator returned False prior to the stop condition being satisfied"
+        else return False
 
 release :: (IsProperty propa Path a, IsProperty propb Path a) => propa -> propb -> PathProperty a Bool
 p `release` q = do
-    qNow <- toProperty q
-    if not qNow
+    qNow <- toProperty q `ifFalseWarn` "False: Condition in Release operator returned False prior to the release condition being satisfied"
+    if qNow
         then do
-            warn "False: Condition in Release operator returned False prior to the release condition being satisfied"
-            return qNow
-        else do
             pNow <- toProperty p
             if pNow
                 then return True
@@ -135,19 +134,14 @@ p `release` q = do
                     if canCont
                         then nextFrame (p `release` q)
                         else return True
+        else return False
 
 {--------------------------------------------------------------------
     Now vs. future properties
 --------------------------------------------------------------------}
 
 increasing :: Ord a => PathProperty a Bool
-increasing = do
-    valA <- getValue
-    valB <- next
-    return (maybe True (>valA) valB)
+increasing = liftA2 (\a -> maybe True (>a)) getValue next
 
 decreasing :: Ord a => PathProperty a Bool
-decreasing = do
-    valA <- getValue
-    valB <- next
-    return (maybe True (<valA) valB)
+decreasing = liftA2 (\a -> maybe True (<a)) getValue next

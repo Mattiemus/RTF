@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, DeriveFoldable, DeriveFunctor #-}
+{-# LANGUAGE GADTs, GeneralizedNewtypeDeriving #-}
 
 module Test.FRP.Tree where
 
@@ -18,11 +18,7 @@ import Test.FRP.Path
 --------------------------------------------------------------------}
 
 newtype ProgTree a = ProgTree { unProgTree :: Tree a }
-    deriving (Show, Foldable, Functor)
-
-instance Applicative ProgTree where
-    pure x = ProgTree (pure x)
-    ProgTree a <*> ProgTree b = ProgTree (a <*> b)
+    deriving (Show, Foldable, Functor, Applicative, Monad)
 
 {--------------------------------------------------------------------
     Path selector

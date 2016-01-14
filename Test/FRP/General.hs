@@ -5,6 +5,7 @@ module Test.FRP.General where
 import Data.Foldable
 
 import Control.Applicative
+import Control.Monad
 
 {--------------------------------------------------------------------
     Messages
@@ -15,6 +16,12 @@ type Message = String
 class Monad m => Messageable m where
     warn :: Message -> m ()
     fatal :: Message -> m a
+
+ifFalseWarn :: Messageable m => m Bool -> Message -> m Bool
+ifFalseWarn gen msg = do
+    result <- gen
+    unless result (warn msg)
+    return result
 
 {--------------------------------------------------------------------
     Results
@@ -89,6 +96,9 @@ returnResult res = Prop $ const res
 getPropInput :: Property container a (container (Value a))
 getPropInput = Prop $ \input -> pure input
 
+getFilteredInput :: MonadPlus container => (Value a -> Bool) -> Property container a (container (Value a))
+getFilteredInput f = Prop $ \input -> pure (mfilter f input)
+
 getValue :: Foldable container => Property container a (Value a)
 getValue = do
     input <- getPropInput
@@ -115,11 +125,8 @@ instance a ~ b => IsProperty Bool container b where
 
 instance (Foldable container, a ~ b) => IsProperty (a -> Bool) container b where
     toProperty prop = do
-        input <- getPropInput
-        let xs = toList input
-        case xs of
-            [] -> fatal "Not enough input to satisfy property"
-            (Value (x, _) : _) -> pure (prop x)
+        Value (x, _) <- getValue
+        pure (prop x)
 
 instance (containera ~ containerb, a ~ b) => IsProperty (Property containera a Bool) containerb b where
     toProperty = id
