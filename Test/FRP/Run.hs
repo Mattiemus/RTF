@@ -11,7 +11,12 @@ import Test.FRP.TreeGen
     Run a test
 --------------------------------------------------------------------}
 
-runTest :: TestableArrow arr => Gen StdGen a () -> arr a b -> TreeProperty b Bool -> IO ()
+-- |Runs a testable arrow on some generated input trees
+runTest :: TestableArrow arr
+        => Gen StdGen a () -- ^Generator used to create inputs
+        -> arr a b -- ^TestableArrow to run the generated inputs
+        -> TreeProperty b Bool -- ^A property that must hold over all program outputs
+        -> IO ()
 runTest gen framework prop = do
     trees <- runDefaultGen_ gen
     case trees of
@@ -32,8 +37,12 @@ runTest gen framework prop = do
     Testable arrow class
 --------------------------------------------------------------------}
 
+-- |Class of arrows that can be tested
 class TestableArrow arr where
-    createOutput :: arr a b -> ProgTree (Value a) -> IO (ProgTree (Value b))
+    -- |Runs all inputs through the given arrow, returning a new tree of the outputs
+    createOutput :: arr a b -- ^The arrow used to generate outputs
+                 -> ProgTree (Value a) -- ^Program tree containing inputs
+                 -> IO (ProgTree (Value b)) -- ^An IO action that returns a program tree containing outputs from the given arrow
 
 instance TestableArrow (->) where
     createOutput f input = return (fmap (fmap f) input)

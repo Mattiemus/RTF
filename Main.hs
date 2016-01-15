@@ -1,6 +1,7 @@
-import Prelude hiding (id, until)
+import Prelude hiding ((.), id, until)
 
-import Control.Wire hiding (testWire)
+import Control.Wire hiding ((-->), testWire)
+import Control.Wire.Unsafe.Event hiding ((-->), testWire)
 
 import Test.FRP.General
 import Test.FRP.Path
@@ -16,15 +17,15 @@ main :: IO ()
 main = runTest testValueGen testWire testTreeProp
 
 testValueGen :: Gen g Int ()
-testValueGen = do
-    branch (putValues [1..10])
-    branch (putValues [10,9..0])
+testValueGen = putValues [1..10]
 
-testTreeProp :: TreeProperty Int Bool
+testTreeProp :: TreeProperty (Int, Event Int) Bool
 testTreeProp = inevitably allPaths testPathProp
 
-testPathProp :: PathProperty Int Bool
-testPathProp = always increasing `implies` (==2)
+testPathProp :: PathProperty (Int, Event Int) Bool
+testPathProp = always (do
+    (x, e) <- getCurrentValue
+    (x == 5) --> occurred e)
 
-testWire :: Wire (TestableWireSession IO) () IO Int Int
-testWire = arr (+1)
+testWire :: Wire TestableWireSession e IO Int (Int, Event Int)
+testWire = id &&& edge (==5)

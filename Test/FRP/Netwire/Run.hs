@@ -11,25 +11,19 @@ import Test.FRP.Tree
 import Test.FRP.Run
 
 {--------------------------------------------------------------------
-    Session generator
---------------------------------------------------------------------}
-
-type TestableWireSession m = Session m (Timed NominalDiffTime ())
-
-makeSession :: Monad m => TimeSpan -> TestableWireSession m
-makeSession ts = Session $ return (Timed (fromRational (toRational ts)) (), error "makeSession: Session cannot be stepped")
-
-{--------------------------------------------------------------------
     TestableArrow instance for netwire
 --------------------------------------------------------------------}
 
-instance TestableArrow (Wire (TestableWireSession IO) e IO) where
+-- |Session type for a testable wire
+type TestableWireSession = Session IO (Timed NominalDiffTime ())
+
+-- |Instance for testing netwire wires. 
+instance TestableArrow (Wire TestableWireSession e IO) where
     createOutput w tree@(ProgTree (Node (Value (_, tp)) _)) = runTestableWire tp w tree
         where
-            runTestableWire :: TimePoint -> Wire (TestableWireSession IO) e IO a b -> ProgTree (Value a) -> IO (ProgTree (Value b))
+            runTestableWire :: TimePoint -> Wire TestableWireSession e IO a b -> ProgTree (Value a) -> IO (ProgTree (Value b))
             runTestableWire prevTp wire (ProgTree (Node (Value (x, currTp)) xs)) = do
-                let deltaTime = currTp - prevTp
-                (result, nextWire) <- stepWire wire (makeSession deltaTime) (pure x)
+                (result, nextWire) <- stepWire wire (countSession_ (fromRational (toRational (currTp - prevTp)))) (pure x)
                 case result of
                     Left _ -> error "createOutput: Wire inhibited during program tree output generation"
                     Right x -> do
