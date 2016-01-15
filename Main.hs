@@ -10,7 +10,7 @@ import Test.FRP.Tree
 import Test.FRP.TreeGen
 import Test.FRP.Netwire.Run
 
--- TODO: better messages on TreeProperty predicates
+-- TODO: the output should be made easier to debug!
 -- TODO: create some examples
 
 main :: IO ()

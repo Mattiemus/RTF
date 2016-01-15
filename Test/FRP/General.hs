@@ -158,13 +158,17 @@ instance (containera ~ containerb, a ~ b) => IsProperty (Property containera a B
     General property operations
 --------------------------------------------------------------------}
 
+-- |Property negation
+pNot :: IsProperty propa container a => propa -> Property container a Bool
+pNot prop = fmap not (toProperty prop)
+
 -- |Boolean or over two properties
-(\/) :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
-a \/ b = liftA2 (||) (toProperty a) (toProperty b)
+pOr :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
+a `pOr` b = liftA2 (||) (toProperty a) (toProperty b)
 
 -- |Boolean and over two properties
-(/\) :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
-a /\ b = liftA2 (&&) (toProperty a) (toProperty b)
+pAnd :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
+a `pAnd` b = liftA2 (&&) (toProperty a) (toProperty b)
 
 -- |Boolean implication over two properties
 implies :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
@@ -174,13 +178,17 @@ a `implies` b = do
         then toProperty b
         else return True
 
+-- |Operator version of `pOr`
+(\/) :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
+(\/) = pOr
+
+-- |Operator version of `pAnd`
+(/\) :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
+(/\) = pAnd
+
 -- |Operator version of `implies`
 (-->) :: (IsProperty propa container a, IsProperty propb container a) => propa -> propb -> Property container a Bool
 (-->) = implies
-
--- |Property negation
-pNot :: IsProperty propa container a => propa -> Property container a Bool
-pNot prop = fmap not (toProperty prop)
 
 {--------------------------------------------------------------------
     Time

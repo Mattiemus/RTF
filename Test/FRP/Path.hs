@@ -10,6 +10,8 @@ import Data.Monoid
 import Control.Monad
 import Control.Applicative
 
+import Numeric.Limits
+
 import Test.FRP.General
 
 {--------------------------------------------------------------------
@@ -67,23 +69,15 @@ betweenTimes tpstart tpend prop = do
     Path filtered <- getFilteredInput (\(Value (_, t)) -> t > tpstart && t < tpend)
     if null filtered
         then fatal "Operator `betweenTimes` could not find any values between the given time points"
-        else runSubProperty (Path filtered) (toProperty prop) `ifFalseWarn` "False: Condition did not hold between the specified times"
+        else runSubProperty (Path filtered) (toProperty prop) `ifFalseWarn` "Condition did not hold between the specified times"
 
 -- |Specifies that some property must be true prior to a given time point
 beforeTime :: IsProperty prop Path a => TimePoint -> prop -> PathProperty a Bool
-beforeTime tp prop = do
-    Path filtered <- getFilteredInput (\(Value (_, t)) -> t < tp)
-    if null filtered
-        then fatal "Operator `beforeTime` could not find any values before the given time point"
-        else runSubProperty (Path filtered) (toProperty prop) `ifFalseWarn` "False: Condition did not hold before the specified time"
+beforeTime tp prop = betweenTimes minValue tp prop `ifFalseWarn` "Condition did not hold before the specified time"
 
 -- |Specifies that some property must be true after a given time point
 afterTime :: IsProperty prop Path a => TimePoint -> prop -> PathProperty a Bool
-afterTime tp prop = do
-    Path filtered <- getFilteredInput (\(Value (_, t)) -> t > tp)
-    if null filtered
-        then fatal "Operator `afterTime` could not find any values after the given time point"
-        else runSubProperty (Path filtered) (toProperty prop) `ifFalseWarn` "False: Condition did not hold after the specified time"
+afterTime tp prop = betweenTimes tp maxValue prop `ifFalseWarn` "Condition did not hold after the specified time"
 
 -- |Returns the value produced by a property in the next frame. Note this can fail if the next frame does not exist, use `tryNextFrame` as a safer alternative.
 nextFrame :: IsProperty prop Path a => prop -> PathProperty a Bool
@@ -141,6 +135,10 @@ next = do
 -- |Specifies that a given property must be true over all frames
 always :: IsProperty prop Path a => prop -> PathProperty a Bool
 always prop = (False `release` prop) `ifFalseWarn` "Condition in Always operator is not globablly satisfiable"
+
+-- |Specifies that a given property must be false over all frames
+never :: IsProperty prop Path a => prop -> PathProperty a Bool
+never prop = notP (eventually prop) `ifFalseWarn` "Condition in Never operator is not globablly falsifiable"
 
 -- |Specifies that a given property must be true at either the current frame or some point in the future
 eventually :: IsProperty prop Path a => prop -> PathProperty a Bool
