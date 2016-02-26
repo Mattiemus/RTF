@@ -1,7 +1,7 @@
 import Prelude hiding ((.), id, until)
 
-import Control.Wire hiding ((-->), testWire)
-import Control.Wire.Unsafe.Event hiding ((-->), testWire)
+import Control.Wire hiding ((-->), testWire, once)
+import Control.Wire.Unsafe.Event hiding (testWire, once)
 
 import Test.FRP.General
 import Test.FRP.Path
@@ -14,18 +14,19 @@ import Test.FRP.Netwire.Run
 -- TODO: create some examples
 
 main :: IO ()
-main = runTest testValueGen testWire testTreeProp
+main = runTest testValueGen (testWire 10) (testTreeProp 10)
 
-testValueGen :: Gen g Int ()
-testValueGen = putValues [1..10]
+testValueGen :: Gen g (Event Int) ()
+testValueGen = putValues [NoEvent, NoEvent, Event 10, NoEvent, Event 15]
 
-testTreeProp :: TreeProperty (Int, Event Int) Bool
-testTreeProp = inevitably allPaths testPathProp
+testTreeProp :: Int -> TreeProperty (Int, Event Int) Bool
+testTreeProp x = inevitably allPaths (testPathProp x)
 
-testPathProp :: PathProperty (Int, Event Int) Bool
-testPathProp = always (do
-    (x, e) <- getCurrentValue
-    (x == 5) --> occurred e)
+testPathProp :: Int -> PathProperty (Int, Event Int) Bool
+testPathProp x = do
+    (currVal, _) <- getCurrentValue
+    ((\(r, _) -> r == x) `weakUntil` (\(_, e) -> occurred e)) /\
+        ((tryNextFrame True (testPathProp currVal)) `once` (\(_, e) -> occurred e))
 
-testWire :: Wire TestableWireSession e IO Int (Int, Event Int)
-testWire = id &&& edge (==5)
+testWire :: Int -> Wire TestableWireSession () IO (Event Int) (Int, Event Int)
+testWire x = hold <+> pure x &&& id

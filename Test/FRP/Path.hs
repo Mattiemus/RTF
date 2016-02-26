@@ -138,7 +138,7 @@ always prop = (False `release` prop) `ifFalseWarn` "Condition in Always operator
 
 -- |Specifies that a given property must be false over all frames
 never :: IsProperty prop Path a => prop -> PathProperty a Bool
-never prop = notP (eventually prop) `ifFalseWarn` "Condition in Never operator is not globablly falsifiable"
+never prop = pNot (eventually prop) `ifFalseWarn` "Condition in Never operator is not globablly falsifiable"
 
 -- |Specifies that a given property must be true at either the current frame or some point in the future
 eventually :: IsProperty prop Path a => prop -> PathProperty a Bool
@@ -176,6 +176,17 @@ p `release` q = do
                 then return True
                 else tryNextFrame True (p `release` q)
         else return False
+
+-- |Specifies that some property must hold after some property becomes true
+once :: (IsProperty propa Path a, IsProperty propb Path a)
+      => propa -- ^Property to be true
+      -> propb -- ^Triggering property
+      -> PathProperty a Bool
+p `once` q = do
+    pResult <- toProperty q
+    if pResult
+        then toProperty p `ifFalseWarn` "Property in Once operator was falsified after triggering property"
+        else tryNextFrame True (p `once` q)
 
 {--------------------------------------------------------------------
     Now vs. future properties

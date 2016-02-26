@@ -3,6 +3,7 @@
 module Test.FRP.Netwire.Run where
 
 import Data.Tree
+import Data.Monoid
 
 import Control.Wire
 
@@ -17,8 +18,8 @@ import Test.FRP.Run
 -- |Session type for a testable wire
 type TestableWireSession = Session IO (Timed NominalDiffTime ())
 
--- |Instance for testing netwire wires. 
-instance TestableArrow (Wire TestableWireSession e IO) where
+-- |Instance for testing netwire wires.
+instance Monoid e => TestableArrow (Wire TestableWireSession e IO) where
     createOutput w tree@(ProgTree (Node (Value (_, tp)) _)) = runTestableWire tp w tree
         where
             runTestableWire :: TimePoint -> Wire TestableWireSession e IO a b -> ProgTree (Value a) -> IO (ProgTree (Value b))
