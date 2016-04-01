@@ -33,6 +33,12 @@ runTest gen framework prop = do
                 Right True -> runTrees trees framework prop
                 _ -> putStrLn "Test failed. Stopping."
 
+runBasicTest :: (Random a, TestableArrow arr)
+             => arr a b -- ^TestableArrow to run the generated inputs
+             -> PathProperty b Bool -- ^A property that must hold over all program outputs
+             -> IO ()
+runBasicTest framework prop = runTest (makeRandomTree 10 0) framework (inevitably allPaths prop)
+
 {--------------------------------------------------------------------
     Testable arrow class
 --------------------------------------------------------------------}

@@ -1,5 +1,7 @@
 module Test.FRP.TreeGen where
 
+import Control.Monad
+
 import Data.Tree
 
 import System.Random
@@ -75,6 +77,16 @@ printGeneratedTree :: Show a => Gen StdGen a b -> IO ()
 printGeneratedTree gen = do
     trees <- runDefaultGen_ gen
     mapM_ putStrLn (fmap (drawTree . fmap show . unProgTree) trees)
+
+{--------------------------------------------------------------------
+    Predefined random trees
+--------------------------------------------------------------------}
+
+makeRandomTree :: (RandomGen g, Random a) => Int -> Int -> Gen g a ()
+makeRandomTree 0 _ = return ()
+makeRandomTree maxDepth branches = do
+    putRandValue
+    replicateM_ (branches + 1) (branch (makeRandomTree (maxDepth - 1) branches))
 
 {--------------------------------------------------------------------
     Primitive operations
@@ -160,7 +172,7 @@ branch gen = Gen $ \state ->
     let (x, genTree, GenState { genRandom = rand }) = unGen gen state
     in (x, \nextTrees -> genTree [] ++ nextTrees, state { genRandom = rand })
 
--- |Same as `branch` but uses the same number generator for the current and new branch. 
+-- |Same as `branch` but uses the same number generator for the current and new branch.
 branchForgetRand :: Gen g a b -> Gen g a b
 branchForgetRand gen = Gen $ \state ->
     let (x, genTree, _) = unGen gen state
