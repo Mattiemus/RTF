@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses #-}
 
 module Test.FRP.Netwire.Run where
 
@@ -16,7 +16,7 @@ import Test.FRP.Run
 --------------------------------------------------------------------}
 
 -- |Session type for a testable wire
-type TestableWireSession = Session IO (Timed NominalDiffTime ())
+type TestableWireSession = Timed TimeSpan ()
 
 -- |Instance for testing netwire wires.
 instance Monoid e => TestableArrow (Wire TestableWireSession e IO) where
@@ -24,7 +24,8 @@ instance Monoid e => TestableArrow (Wire TestableWireSession e IO) where
         where
             runTestableWire :: TimePoint -> Wire TestableWireSession e IO a b -> ProgTree (Value a) -> IO (ProgTree (Value b))
             runTestableWire prevTp wire (ProgTree (Node (Value (x, currTp)) xs)) = do
-                (result, nextWire) <- stepWire wire (countSession_ (fromRational (toRational (currTp - prevTp)))) (pure x)
+                let currTime = fromRational (toRational (currTp - prevTp))
+                (result, nextWire) <- stepWire wire (Timed currTime ()) (pure x)
                 case result of
                     Left _ -> error "createOutput: Wire inhibited during program tree output generation"
                     Right x -> do

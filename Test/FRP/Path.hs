@@ -55,6 +55,16 @@ hasNext = do
         (_ : _ : _) -> pure True
         _ -> pure False
 
+-- |Computes the time difference between the current and next frame
+-- returns 0 if next frame doesnt exist
+getDeltaTime :: PathProperty a TimeSpan
+getDeltaTime = do
+    Value (_, tpCurr) <- getValue
+    nextVal <- next
+    return $ case nextVal of
+        Nothing -> 0
+        Just (Value (_, tpNext)) -> tpNext - tpCurr
+
 {--------------------------------------------------------------------
     Time jumping properties
 --------------------------------------------------------------------}
@@ -66,7 +76,7 @@ betweenTimes :: IsProperty prop Path a
              -> prop -- ^Property that must hold
              -> PathProperty a Bool
 betweenTimes tpstart tpend prop = do
-    Path filtered <- getFilteredInput (\(Value (_, t)) -> t > tpstart && t < tpend)
+    Path filtered <- getFilteredInput (\(Value (_, t)) -> t >= tpstart && t <= tpend)
     if null filtered
         then fatal "Operator `betweenTimes` could not find any values between the given time points"
         else runSubProperty (Path filtered) (toProperty prop) `ifFalseWarn` "Condition did not hold between the specified times"
@@ -193,9 +203,17 @@ p `once` q = do
 --------------------------------------------------------------------}
 
 -- |Specifies that the next value must be larger than the current. Defaults to true if there is no next frame.
-increasing :: Ord a => PathProperty a Bool
-increasing = liftA2 (\a -> maybe True (>a)) getValue next
+increasing :: Ord b => PathProperty a b -> PathProperty a Bool
+increasing propGen = do
+    valNow <- propGen
+    tryNextFrame True $ do
+        nextVal <- propGen
+        return (nextVal >= valNow)
 
 -- |Specifies that the next value must be smaller than the current. Defaults to true if there is no next frame.
-decreasing :: Ord a => PathProperty a Bool
-decreasing = liftA2 (\a -> maybe True (<a)) getValue next
+decreasing :: Ord b => PathProperty a b -> PathProperty a Bool
+decreasing propGen = do
+    valNow <- propGen
+    tryNextFrame True $ do
+        nextVal <- propGen
+        return (nextVal <= valNow)
